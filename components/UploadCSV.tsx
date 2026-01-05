@@ -1,16 +1,26 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { parseCSV } from '@/lib/csvParser';
 import { Transaction } from '@/types';
+import { useBankAccounts } from '@/contexts/BankAccountsContext';
 
 interface UploadCSVProps {
-  onTransactionsLoaded: (transactions: Transaction[]) => void;
+  onTransactionsLoaded: (transactions: Transaction[], accountId?: string | null) => void;
 }
 
 export function UploadCSV({ onTransactionsLoaded }: UploadCSVProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { accounts, selectedAccountId } = useBankAccounts();
+  const [selectedAccountForUpload, setSelectedAccountForUpload] = useState<string | null>(
+    selectedAccountId || null,
+  );
+
+  // Sync selected account with the current selection
+  useEffect(() => {
+    setSelectedAccountForUpload(selectedAccountId || null);
+  }, [selectedAccountId]);
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -22,7 +32,7 @@ export function UploadCSV({ onTransactionsLoaded }: UploadCSVProps) {
     try {
       const text = await file.text();
       const transactions = parseCSV(text);
-      onTransactionsLoaded(transactions);
+      onTransactionsLoaded(transactions, selectedAccountForUpload);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to parse CSV file');
     } finally {
@@ -37,6 +47,30 @@ export function UploadCSV({ onTransactionsLoaded }: UploadCSVProps) {
       <h2 className="text-xl font-semibold text-gray-900 mb-4">Upload Bank Statement</h2>
       
       <div className="space-y-4">
+        {accounts.length > 0 && (
+          <div>
+            <label htmlFor="account-select" className="block text-sm font-medium text-gray-700 mb-1">
+              Assign to Account
+            </label>
+            <select
+              id="account-select"
+              value={selectedAccountForUpload || ''}
+              onChange={(e) => setSelectedAccountForUpload(e.target.value || null)}
+              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+            >
+              <option value="">Unassigned</option>
+              {accounts.map((account) => (
+                <option key={account.id} value={account.id}>
+                  {account.name} - {account.bank_name}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs text-gray-500">
+              Select the bank account these transactions belong to
+            </p>
+          </div>
+        )}
+
         <div>
           <label
             htmlFor="csv-upload"

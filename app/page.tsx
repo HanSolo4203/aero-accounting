@@ -15,9 +15,18 @@ import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { Transaction } from '@/types';
 import { useCategories } from '@/hooks/useCategories';
 import { MultiMonthCharts } from '@/components/MultiMonthCharts';
+import { AccountSidebar } from '@/components/AccountSidebar';
+import { useBankAccounts } from '@/contexts/BankAccountsContext';
 
 
 export default function Home() {
+  const { selectedAccountId } = useBankAccounts();
+  
+  // Debug: Log selectedAccountId changes
+  useEffect(() => {
+    console.log('Selected account ID changed to:', selectedAccountId);
+  }, [selectedAccountId]);
+  
   const {
     transactions,
     loading,
@@ -25,7 +34,7 @@ export default function Home() {
     addTransactions,
     updateTransactionCategory,
     deleteTransaction,
-  } = useTransactions();
+  } = useTransactions(selectedAccountId);
 
   const { saveToLocalStorage } = useLocalStorage();
   const {
@@ -98,10 +107,10 @@ export default function Home() {
     });
   }, [transactions, filters]);
 
-  const handleTransactionsLoaded = async (newTransactions: Transaction[]) => {
+  const handleTransactionsLoaded = async (newTransactions: Transaction[], accountId?: string | null) => {
     try {
       setUploadError(null);
-      await addTransactions(newTransactions);
+      await addTransactions(newTransactions, accountId);
     } catch (err) {
       setUploadError(err instanceof Error ? err.message : 'Failed to upload transactions');
     }
@@ -127,42 +136,45 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white shadow-sm border-b">
-        <div className="max-w-7xl mx-auto px-4 py-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">Simple Accounting</h1>
-              <p className="text-gray-600 mt-1">Upload bank statements and categorize transactions</p>
-            </div>
-            <div className="flex flex-col items-end gap-2 sm:flex-row sm:items-center">
-              <Link
-                href="/settings/categories"
-                className="inline-flex items-center gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-1.5 text-sm font-medium text-blue-700 hover:bg-blue-100 transition-colors"
-              >
-                <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                  <path d="M11.3 1.046a1 1 0 00-2.6 0l-.203.813a1 1 0 01-.95.741l-.83.044a1 1 0 00-.872 1.369l.322.777a1 1 0 01-.256 1.094l-.606.53a1 1 0 00.088 1.567l.67.45a1 1 0 01.393 1.051l-.211.804a1 1 0 001.288 1.215l.798-.273a1 1 0 011.07.296l.547.652a1 1 0 001.58 0l.548-.652a1 1 0 011.07-.296l.798.273a1 1 0 001.287-1.215l-.211-.804a1 1 0 01.393-1.05l.669-.451a1 1 0 00.09-1.566l-.607-.53a1 1 0 01-.255-1.095l.322-.777a1 1 0 00-.873-1.368l-.83-.045a1 1 0 01-.95-.74l-.203-.814z" />
-                  <path d="M10 6a3 3 0 100 6 3 3 0 000-6z" />
-                </svg>
-                Manage categories
-              </Link>
-              {transactions.length > 0 && (
-                <div className="text-sm text-gray-600">
-                  {filteredTransactions.length !== transactions.length && (
-                    <span className="mr-2">
-                      Showing {filteredTransactions.length} of {transactions.length}
-                    </span>
-                  )}
-                  <span className="text-gray-400">|</span>
-                  <span className="ml-2">💾 Auto-saved</span>
-                </div>
-              )}
+    <div className="flex h-screen overflow-hidden bg-gray-50">
+      <AccountSidebar />
+      
+      <div className="flex flex-1 flex-col overflow-hidden">
+        <header className="bg-white shadow-sm border-b">
+          <div className="px-4 py-4 sm:px-6 lg:px-8">
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 className="text-3xl font-bold text-gray-900">Simple Accounting</h1>
+                <p className="text-gray-600 mt-1">Upload bank statements and categorize transactions</p>
+              </div>
+              <div className="flex flex-col items-end gap-2 sm:flex-row sm:items-center">
+                <Link
+                  href="/settings/categories"
+                  className="inline-flex items-center gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-1.5 text-sm font-medium text-blue-700 hover:bg-blue-100 transition-colors"
+                >
+                  <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                    <path d="M11.3 1.046a1 1 0 00-2.6 0l-.203.813a1 1 0 01-.95.741l-.83.044a1 1 0 00-.872 1.369l.322.777a1 1 0 01-.256 1.094l-.606.53a1 1 0 00.088 1.567l.67.45a1 1 0 01.393 1.051l-.211.804a1 1 0 001.288 1.215l.798-.273a1 1 0 011.07.296l.547.652a1 1 0 001.58 0l.548-.652a1 1 0 011.07-.296l.798.273a1 1 0 001.287-1.215l-.211-.804a1 1 0 01.393-1.05l.669-.451a1 1 0 00.09-1.566l-.607-.53a1 1 0 01-.255-1.095l.322-.777a1 1 0 00-.873-1.368l-.83-.045a1 1 0 01-.95-.74l-.203-.814z" />
+                    <path d="M10 6a3 3 0 100 6 3 3 0 000-6z" />
+                  </svg>
+                  Manage categories
+                </Link>
+                {transactions.length > 0 && (
+                  <div className="text-sm text-gray-600">
+                    {filteredTransactions.length !== transactions.length && (
+                      <span className="mr-2">
+                        Showing {filteredTransactions.length} of {transactions.length}
+                      </span>
+                    )}
+                    <span className="text-gray-400">|</span>
+                    <span className="ml-2">💾 Auto-saved</span>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
-        </div>
-      </header>
+        </header>
 
-      <main className="max-w-7xl mx-auto px-4 py-8 sm:px-6 lg:px-8">
+        <main className="flex-1 overflow-y-auto px-4 py-8 sm:px-6 lg:px-8">
         <div className="space-y-8">
           {/* Connection Status */}
           {loading && (
@@ -287,7 +299,8 @@ export default function Home() {
             </div>
           )}
         </div>
-      </main>
+        </main>
+      </div>
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Transaction } from '@/types';
 
@@ -17,38 +17,132 @@ const createTransactionKey = (transaction: Transaction) => {
   return `${date}|${description}|${amount.toFixed(2)}`;
 };
 
-export function useTransactions() {
+export function useTransactions(accountId?: string | null) {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const currentAccountIdRef = React.useRef(accountId);
+  const abortControllerRef = React.useRef<AbortController | null>(null);
 
-  // Load transactions from Supabase
+  // Load transactions when accountId changes - explicitly refresh on account selection
   useEffect(() => {
-    loadTransactions();
-  }, []);
+    console.log('🔄 Account changed, refreshing transactions for accountId:', accountId);
+    
+    // Cancel any pending requests
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    
+    // Create new abort controller for this request
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
+    
+    // Update ref immediately
+    currentAccountIdRef.current = accountId;
+    
+    // Clear transactions immediately when accountId changes
+    setTransactions([]);
+    setError(null);
+    setLoading(true);
 
-  const loadTransactions = async () => {
+    // Load transactions for the new account from Supabase
+    const loadTransactionsForAccount = async () => {
+      try {
+        let query = supabase
+          .from('transactions')
+          .select('*')
+          .eq('user_id', TEMP_USER_ID);
+
+        // Filter by account_id if provided
+        // null accountId means show all transactions (unassigned + all accounts)
+        if (accountId !== undefined && accountId !== null && accountId !== '') {
+          query = query.eq('account_id', accountId);
+          console.log('📊 Filtering transactions for account:', accountId);
+        } else {
+          console.log('📊 Loading all transactions (no account filter)');
+        }
+
+        const { data, error: queryError } = await query.order('date', { ascending: false });
+
+        // Check if request was aborted
+        if (abortController.signal.aborted) {
+          console.log('⏹️ Request aborted for account:', accountId);
+          return;
+        }
+
+        if (queryError) throw queryError;
+
+        // Only update state if accountId hasn't changed during the query
+        if (currentAccountIdRef.current === accountId) {
+          console.log(`✅ Loaded ${data?.length || 0} transactions for account:`, accountId);
+          setTransactions(data || []);
+          setError(null);
+        } else {
+          console.log(`⏭️ Ignoring stale results for account:`, accountId, 'current account:', currentAccountIdRef.current);
+        }
+      } catch (err) {
+        // Check if request was aborted
+        if (abortController.signal.aborted) {
+          return;
+        }
+        
+        // Only set error if accountId hasn't changed
+        if (currentAccountIdRef.current === accountId) {
+          const errorMessage = err instanceof Error ? err.message : 'Failed to load transactions';
+          setError(errorMessage);
+          console.error('❌ Error loading transactions:', errorMessage);
+        }
+      } finally {
+        // Only update loading state if accountId hasn't changed and request wasn't aborted
+        if (!abortController.signal.aborted && currentAccountIdRef.current === accountId) {
+          setLoading(false);
+        }
+      }
+    };
+
+    loadTransactionsForAccount();
+
+    // Cleanup function to cancel request if accountId changes again
+    return () => {
+      abortController.abort();
+    };
+  }, [accountId]);
+
+  // Load transactions from Supabase (for manual refresh)
+  const loadTransactions = useCallback(async (accountIdForQuery?: string | null) => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
+      setError(null);
+      let query = supabase
         .from('transactions')
         .select('*')
-        .eq('user_id', TEMP_USER_ID)
-        .order('date', { ascending: false });
+        .eq('user_id', TEMP_USER_ID);
 
-      if (error) throw error;
+      // Filter by account_id if provided
+      if (accountIdForQuery !== undefined && accountIdForQuery !== null && accountIdForQuery !== '') {
+        query = query.eq('account_id', accountIdForQuery);
+      }
 
-      setTransactions(data || []);
+      const { data, error: queryError } = await query.order('date', { ascending: false });
+
+      if (queryError) throw queryError;
+
+      if (currentAccountIdRef.current === accountIdForQuery) {
+        setTransactions(data || []);
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load transactions');
-      console.error('Error loading transactions:', err);
+      if (currentAccountIdRef.current === accountIdForQuery) {
+        setError(err instanceof Error ? err.message : 'Failed to load transactions');
+      }
     } finally {
-      setLoading(false);
+      if (currentAccountIdRef.current === accountIdForQuery) {
+        setLoading(false);
+      }
     }
-  };
+  }, []);
 
   // Add new transactions
-  const addTransactions = async (newTransactions: Transaction[]) => {
+  const addTransactions = async (newTransactions: Transaction[], transactionAccountId?: string | null) => {
     try {
       setError(null);
       const existingKeys = new Set(transactions.map(createTransactionKey));
@@ -72,6 +166,7 @@ export function useTransactions() {
         balance: t.balance ?? null,
         category: t.category,
         category_id: t.category_id ?? null,
+        account_id: transactionAccountId ?? t.account_id ?? null,
         user_id: TEMP_USER_ID,
       }));
 
@@ -170,6 +265,6 @@ export function useTransactions() {
     clearTransactions,
     updateTransactionCategory,
     deleteTransaction,
-    refreshTransactions: loadTransactions,
+    refreshTransactions: () => loadTransactions(accountId),
   };
 }

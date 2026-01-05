@@ -6,6 +6,7 @@ export interface Transaction {
   balance?: number;
   category: string;
   category_id?: string | null;
+  account_id?: string | null;
 }
 
 export interface Category {
@@ -16,6 +17,19 @@ export interface Category {
   created_at?: string;
   updated_at?: string;
 }
+
+export interface BankAccount {
+  id: string;
+  user_id: string;
+  name: string;
+  bank_name: string;
+  account_number?: string | null;
+  account_type: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export type AccountType = 'checking' | 'savings' | 'credit_card' | 'investment' | 'other';
 
 export interface CategorySeed {
   name: string;
