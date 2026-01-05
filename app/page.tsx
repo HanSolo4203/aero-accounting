@@ -14,6 +14,8 @@ import { useTransactions } from '@/hooks/useTransactions';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { Transaction } from '@/types';
 import { useCategories } from '@/hooks/useCategories';
+import { MultiMonthCharts } from '@/components/MultiMonthCharts';
+
 
 export default function Home() {
   const {
@@ -246,6 +248,10 @@ export default function Home() {
               <Summary transactions={transactions} />
               <ExportButtons transactions={transactions} />
               <MonthlySummary transactions={transactions} />
+
+               {/* 👇 New multi-month charts – uses filteredTransactions so filters apply */}
+    <MultiMonthCharts transactions={filteredTransactions} />
+    
               <RecurringTransactions
                 transactions={transactions}
                 categoryOptions={categoryOptions}

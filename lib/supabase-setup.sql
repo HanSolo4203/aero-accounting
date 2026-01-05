@@ -35,6 +35,24 @@ CREATE POLICY "Users can delete their own categories"
     FOR DELETE
     USING (user_id = current_setting('app.user_id', TRUE));
 
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_policies
+        WHERE schemaname = 'public'
+          AND tablename = 'categories'
+          AND polname = 'Temporary allow all categories'
+    ) THEN
+        CREATE POLICY "Temporary allow all categories"
+            ON categories
+            FOR ALL
+            USING (true)
+            WITH CHECK (true);
+    END IF;
+END;
+$$;
+
 CREATE OR REPLACE FUNCTION set_categories_updated_at()
 RETURNS TRIGGER AS $$
 BEGIN

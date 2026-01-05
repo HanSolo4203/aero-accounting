@@ -91,6 +91,27 @@ const flattenSeeds = (seeds: CategorySeed[], parentPath: string | null = null): 
   });
 };
 
+const toErrorMessage = (err: unknown, fallback: string) => {
+  if (err instanceof Error) {
+    return err.message;
+  }
+  if (err && typeof err === 'object') {
+    const { message, details, hint } = err as {
+      message?: string;
+      details?: string;
+      hint?: string;
+    };
+    const parts = [message, details, hint].filter(Boolean);
+    if (parts.length) {
+      return parts.join(' • ');
+    }
+  }
+  if (typeof err === 'string') {
+    return err;
+  }
+  return fallback;
+};
+
 export function useCategories() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -118,8 +139,9 @@ export function useCategories() {
       setCategories(data ?? []);
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load categories');
-      console.error('Error loading categories:', err);
+      const message = toErrorMessage(err, 'Failed to load categories');
+      setError(message);
+      console.error('Error loading categories:', message, err);
     } finally {
       setLoading(false);
     }
@@ -256,8 +278,9 @@ export function useCategories() {
         setCategories((prev) => [...prev, data as Category]);
         setError(null);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to create category');
-        console.error('Error creating category:', err);
+        const message = toErrorMessage(err, 'Failed to create category');
+        setError(message);
+        console.error('Error creating category:', message, err);
         throw err;
       }
     },
@@ -340,8 +363,9 @@ export function useCategories() {
         setCategories(updatedCategories);
         setError(null);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to update category');
-        console.error('Error updating category:', err);
+        const message = toErrorMessage(err, 'Failed to update category');
+        setError(message);
+        console.error('Error updating category:', message, err);
         throw err;
       }
     },
@@ -391,8 +415,9 @@ export function useCategories() {
         setCategories((prev) => prev.filter((cat) => !affectedIds.includes(cat.id)));
         setError(null);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to delete category');
-        console.error('Error deleting category:', err);
+        const message = toErrorMessage(err, 'Failed to delete category');
+        setError(message);
+        console.error('Error deleting category:', message, err);
         throw err;
       }
     },
