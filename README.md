@@ -1,16 +1,14 @@
-# Simple Accounting App
+# Right Stay Africa — Accounting Engine
 
-A straightforward Next.js application for managing bank statements and categorizing transactions - similar to Xero but simplified to get you started quickly.
+A double-entry accounting engine for Right Stay Africa (SA Pty Ltd, non-VAT). Transforms raw bank transaction CSVs into trial-balance-ready ledger postings.
 
 ## Features
 
-- 📊 Upload CSV bank statements
-- 💰 Automatic transaction parsing
-- 🏷️ Categorize transactions (Income, Expenses, etc.)
-- 📈 View financial summary (Total Income, Expenses, Net Balance)
-- 🔍 Filter and sort transactions
-- 💾 Track bank balances
-- 🗑️ Delete transactions
+- **CSV Input**: Upload bank statements (comma or semicolon, SA number format supported)
+- **Rules Engine**: Classifies transactions (rental deposit, owner payout, RSL loan, op expense, etc.)
+- **Double-Entry Journal**: Generates Dr/Cr postings per Right Stay accounting rules
+- **Reports**: P&L, Balance Sheet, Owner Ledger, Trial Balance, Journal
+- **Reconciliation**: Trial balance check (debits = credits)
 
 ## Quick Start
 
@@ -50,48 +48,27 @@ A straightforward Next.js application for managing bank statements and categoriz
 
 ## CSV Format
 
-Your CSV file should have headers and columns like:
-
-### Standard Format:
-```csv
-Date,Description,Amount,Balance
-2024-11-01,Salary Deposit,15000.00,15000.00
-2024-11-02,Groceries,-850.50,14149.50
-```
-
-### Debit/Credit Format:
-```csv
-Date,Description,Debit,Credit,Balance
-2024-11-01,Salary Deposit,,15000.00,15000.00
-2024-11-02,Groceries,850.50,,14149.50
-```
-
-**Note:** The Balance column is optional but helpful for reconciliation.
+- Comma or semicolon delimiter (auto-detected)
+- SA number format: `-10 000,00` or `1 330,23`
+- Required: Date, Description, Amount (or Debit/Credit columns)
+- Optional: Balance, Platform
 
 ## Sample Data
 
 A sample CSV file (`sample-bank-statement.csv`) is included in the project for testing.
 
-## Supported Categories
+## Accounting Rules
 
-- Uncategorized
-- Income
-- Salary
-- Business Income
-- Rent
-- Utilities
-- Groceries
-- Transport
-- Fuel
-- Dining
-- Entertainment
-- Shopping
-- Insurance
-- Healthcare
-- Subscriptions
-- Bank Fees
-- Tax
-- Other Expenses
+- Rental deposits (Payoneer, Host Agents) → Cr 2100 OwnerFundsHeld, Dr Bank
+- Commission (17.5%) → Dr 2100, Cr 4000 ManagementFeeIncome (derived)
+- Owner payouts → Dr 2100, Cr Bank
+- RSL loans/repayments → 1300 LoanToRSL
+- Operating expenses → Dr 5xxx, Cr Bank
+- Internal transfers → Between 1000/1010 bank accounts
+
+## Database Setup
+
+Run `lib/supabase-setup.sql` in your Supabase project to create/extend tables.
 
 ## Building for Production
 
@@ -100,26 +77,21 @@ npm run build
 npm start
 ```
 
-## Future Enhancements
+## Tests
 
-This is a simple starter app. You can extend it with:
+```bash
+npm run test
+```
 
-- Database storage (currently data is in-memory)
-- Export to Excel/PDF
-- More detailed reports
-- Charts and graphs
-- Multi-currency support
-- Recurring transactions
-- Budget tracking
-- Multi-user support
-- Mobile app
+Unit tests cover the rules engine and journal generator.
 
 ## Tech Stack
 
-- **Framework:** Next.js 15
+- **Framework:** Next.js 16
+- **Database:** Supabase (PostgreSQL)
 - **Language:** TypeScript
 - **Styling:** Tailwind CSS
-- **State:** React Hooks (useState)
+- **Tests:** Vitest
 
 ## License
 

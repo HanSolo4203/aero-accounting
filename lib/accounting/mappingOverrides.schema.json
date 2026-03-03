@@ -1,0 +1,50 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Right Stay Africa Mapping Overrides",
+  "description": "Mapping for Yoco terminals, person names, and pattern overrides",
+  "type": "object",
+  "properties": {
+    "yoco_terminals": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "terminal_id": { "type": "string", "description": "e.g. E2A418, MG4BT" },
+          "income_type": { "enum": ["cleaning", "laundry", "rental_deposit"] },
+          "property_id": { "type": ["string", "null"] }
+        },
+        "required": ["terminal_id", "income_type"]
+      }
+    },
+    "persons": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "match_type": { "enum": ["regex", "substring"] },
+          "name_pattern": { "type": "string" },
+          "role": { "enum": ["owner", "supplier"] },
+          "property_id": { "type": ["string", "null"] },
+          "owner_id": { "type": ["string", "null"] }
+        },
+        "required": ["match_type", "name_pattern", "role"]
+      }
+    },
+    "patterns": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "match_type": { "enum": ["regex", "substring"] },
+          "pattern": { "type": "string" },
+          "txn_type": { "type": "string" },
+          "platform": { "type": ["string", "null"] },
+          "property_id": { "type": ["string", "null"] },
+          "owner_id": { "type": ["string", "null"] },
+          "note": { "type": "string" }
+        },
+        "required": ["match_type", "pattern", "txn_type"]
+      }
+    }
+  }
+}

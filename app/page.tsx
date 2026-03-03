@@ -4,39 +4,44 @@ import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { UploadCSV } from '@/components/UploadCSV';
 import { TransactionList } from '@/components/TransactionList';
-import { Summary } from '@/components/Summary';
-import { MonthlySummary } from '@/components/MonthlySummary';
+import { DashboardOverview } from '@/components/DashboardOverview';
+import { AccountingSummary } from '@/components/AccountingSummary';
 import { ExportButtons } from '@/components/ExportButtons';
 import { SearchAndFilter, FilterOptions } from '@/components/SearchAndFilter';
 import { RecurringTransactions } from '@/components/RecurringTransactions';
 import { CategoryOverview } from '@/components/CategoryOverview';
+import { MultiMonthCharts } from '@/components/MultiMonthCharts';
+import { MonthlySummary } from '@/components/MonthlySummary';
+import { AccountSidebar } from '@/components/AccountSidebar';
+import { DashboardNav } from '@/components/DashboardNav';
 import { useTransactions } from '@/hooks/useTransactions';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
-import { Transaction } from '@/types';
 import { useCategories } from '@/hooks/useCategories';
-import { MultiMonthCharts } from '@/components/MultiMonthCharts';
-import { AccountSidebar } from '@/components/AccountSidebar';
 import { useBankAccounts } from '@/contexts/BankAccountsContext';
-
+import { useReports } from '@/hooks/useReports';
+import { useNormalizedTransactions } from '@/hooks/useNormalizedTransactions';
+import type { TxnType } from '@/types';
 
 export default function Home() {
   const { selectedAccountId } = useBankAccounts();
-  
-  // Debug: Log selectedAccountId changes
-  useEffect(() => {
-    console.log('Selected account ID changed to:', selectedAccountId);
-  }, [selectedAccountId]);
-  
   const {
     transactions,
     loading,
     error,
-    addTransactions,
+    uploadProgress,
+    processBankCSVUpload,
+    processBankCSVTransactionsOnly,
     updateTransactionCategory,
     deleteTransaction,
+    updateTransactionDate,
+    updateTransactionType,
   } = useTransactions(selectedAccountId);
 
   const { saveToLocalStorage } = useLocalStorage();
+  const { refreshReports } = useReports();
+  const { normalizedMap, refresh: refreshNormalized } = useNormalizedTransactions(
+    transactions.map((t) => t.id),
+  );
   const {
     categoryTree,
     categoryOptions,
@@ -44,6 +49,7 @@ export default function Home() {
     error: categoriesError,
     refreshCategories,
   } = useCategories();
+
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [filters, setFilters] = useState<FilterOptions>({
     searchQuery: '',
@@ -53,72 +59,53 @@ export default function Home() {
     amountMax: '',
     category: 'all',
   });
+  const [showUpload, setShowUpload] = useState(false);
+  const [transactionsCollapsed, setTransactionsCollapsed] = useState(false);
 
-  // Save to localStorage whenever transactions change (as backup)
   useEffect(() => {
     if (transactions.length > 0) {
       saveToLocalStorage(transactions);
     }
   }, [transactions, saveToLocalStorage]);
 
-  // Filter transactions based on search and filters
   const filteredTransactions = useMemo(() => {
     return transactions.filter((t) => {
-      // Search query
-      if (filters.searchQuery) {
-        const searchLower = filters.searchQuery.toLowerCase();
-        if (!t.description.toLowerCase().includes(searchLower)) {
-          return false;
-        }
-      }
-
-      // Date range
-      if (filters.dateFrom) {
-        if (new Date(t.date) < new Date(filters.dateFrom)) {
-          return false;
-        }
-      }
-      if (filters.dateTo) {
-        if (new Date(t.date) > new Date(filters.dateTo)) {
-          return false;
-        }
-      }
-
-      // Amount range
-      if (filters.amountMin) {
-        if (Math.abs(t.amount) < parseFloat(filters.amountMin)) {
-          return false;
-        }
-      }
-      if (filters.amountMax) {
-        if (Math.abs(t.amount) > parseFloat(filters.amountMax)) {
-          return false;
-        }
-      }
-
-      // Category
-      if (filters.category !== 'all') {
-        if (t.category !== filters.category) {
-          return false;
-        }
-      }
-
+      if (filters.searchQuery && !t.description.toLowerCase().includes(filters.searchQuery.toLowerCase())) return false;
+      if (filters.dateFrom && new Date(t.date) < new Date(filters.dateFrom)) return false;
+      if (filters.dateTo && new Date(t.date) > new Date(filters.dateTo)) return false;
+      if (filters.amountMin && Math.abs(t.amount) < parseFloat(filters.amountMin)) return false;
+      if (filters.amountMax && Math.abs(t.amount) > parseFloat(filters.amountMax)) return false;
+      if (filters.category !== 'all' && t.category !== filters.category) return false;
       return true;
     });
   }, [transactions, filters]);
 
-  const handleTransactionsLoaded = async (newTransactions: Transaction[], accountId?: string | null) => {
+  const handleBankCSVUploaded = async (csvText: string, accountId?: string | null) => {
     try {
       setUploadError(null);
-      await addTransactions(newTransactions, accountId);
+      // Use full accounting pipeline so journals + reports are generated
+      await processBankCSVUpload(csvText, accountId);
+      await refreshReports();
+      setShowUpload(false);
     } catch (err) {
-      setUploadError(err instanceof Error ? err.message : 'Failed to upload transactions');
+      setUploadError(err instanceof Error ? err.message : 'Failed to process bank statement');
+    }
+  };
+
+  const handleFastCSVUploaded = async (csvText: string, accountId?: string | null) => {
+    try {
+      setUploadError(null);
+      // Fast path: transactions only, no reports/journals
+      await processBankCSVTransactionsOnly(csvText, accountId ?? null);
+      setShowUpload(false);
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : 'Failed to import transactions');
     }
   };
 
   const handleCategoryChange = async (
     id: string,
-    category: { id: string | null; label: string },
+    category: { id: string | null; label: string }
   ) => {
     try {
       await updateTransactionCategory(id, category);
@@ -135,172 +122,198 @@ export default function Home() {
     }
   };
 
+  const hasData = transactions.length > 0;
+  const hasActiveFilters = filteredTransactions.length !== transactions.length;
+
+  const handleTxnTypeChange = async (id: string, txnType: TxnType) => {
+    try {
+      await updateTransactionType(id, txnType);
+      await Promise.all([refreshReports(), refreshNormalized()]);
+    } catch (err) {
+      console.error('Failed to update txn type:', err);
+    }
+  };
+
+  const handleDateChange = async (id: string, date: string) => {
+    try {
+      await updateTransactionDate(id, date);
+      await refreshReports();
+    } catch (err) {
+      console.error('Failed to update date:', err);
+    }
+  };
+
   return (
-    <div className="flex h-screen overflow-hidden bg-gray-50">
+    <div className="flex h-screen overflow-hidden bg-slate-50">
       <AccountSidebar />
-      
+
       <div className="flex flex-1 flex-col overflow-hidden">
-        <header className="bg-white shadow-sm border-b">
-          <div className="px-4 py-4 sm:px-6 lg:px-8">
-            <div className="flex items-center justify-between">
-              <div>
-                <h1 className="text-3xl font-bold text-gray-900">Simple Accounting</h1>
-                <p className="text-gray-600 mt-1">Upload bank statements and categorize transactions</p>
-              </div>
-              <div className="flex flex-col items-end gap-2 sm:flex-row sm:items-center">
-                <Link
-                  href="/settings/categories"
-                  className="inline-flex items-center gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-1.5 text-sm font-medium text-blue-700 hover:bg-blue-100 transition-colors"
-                >
-                  <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                    <path d="M11.3 1.046a1 1 0 00-2.6 0l-.203.813a1 1 0 01-.95.741l-.83.044a1 1 0 00-.872 1.369l.322.777a1 1 0 01-.256 1.094l-.606.53a1 1 0 00.088 1.567l.67.45a1 1 0 01.393 1.051l-.211.804a1 1 0 001.288 1.215l.798-.273a1 1 0 011.07.296l.547.652a1 1 0 001.58 0l.548-.652a1 1 0 011.07-.296l.798.273a1 1 0 001.287-1.215l-.211-.804a1 1 0 01.393-1.05l.669-.451a1 1 0 00.09-1.566l-.607-.53a1 1 0 01-.255-1.095l.322-.777a1 1 0 00-.873-1.368l-.83-.045a1 1 0 01-.95-.74l-.203-.814z" />
-                    <path d="M10 6a3 3 0 100 6 3 3 0 000-6z" />
-                  </svg>
-                  Manage categories
+        <header className="border-b border-slate-200 bg-white">
+          <div className="px-4 py-3 sm:px-6 lg:px-8">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-6">
+                <Link href="/" className="text-lg font-semibold text-slate-900">
+                  Right Stay Africa
                 </Link>
-                {transactions.length > 0 && (
-                  <div className="text-sm text-gray-600">
-                    {filteredTransactions.length !== transactions.length && (
-                      <span className="mr-2">
-                        Showing {filteredTransactions.length} of {transactions.length}
-                      </span>
+                <DashboardNav />
+              </div>
+              <div className="flex items-center gap-3">
+                {hasData && (
+                  <button
+                    type="button"
+                    onClick={() => setShowUpload((v) => !v)}
+                    className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  >
+                    Upload
+                  </button>
+                )}
+                {hasData && (
+                  <span className="text-sm text-slate-500">
+                    {hasActiveFilters ? (
+                      <>
+                        {filteredTransactions.length} of {transactions.length} transactions
+                      </>
+                    ) : (
+                      `${transactions.length} transactions`
                     )}
-                    <span className="text-gray-400">|</span>
-                    <span className="ml-2">💾 Auto-saved</span>
-                  </div>
+                  </span>
                 )}
               </div>
             </div>
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto px-4 py-8 sm:px-6 lg:px-8">
-        <div className="space-y-8">
-          {/* Connection Status */}
-          {loading && (
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-center">
-              <svg className="animate-spin h-5 w-5 mr-3 text-blue-600" viewBox="0 0 24 24">
-                <circle
-                  className="opacity-25"
-                  cx="12"
-                  cy="12"
-                  r="10"
-                  stroke="currentColor"
-                  strokeWidth="4"
-                  fill="none"
+        <main className="flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8">
+          <div className="mx-auto max-w-6xl space-y-6">
+            {/* Alerts */}
+            {loading && (
+              <div className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+                <Spinner />
+                Loading transactions…
+              </div>
+            )}
+            {error && (
+              <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+                <p className="font-medium">Database error</p>
+                <p className="mt-1 text-red-700">{error}</p>
+              </div>
+            )}
+            {categoriesError && (
+              <div className="flex items-center justify-between gap-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+                <p>{categoriesError}</p>
+                <button
+                  onClick={refreshCategories}
+                  className="shrink-0 rounded border border-red-300 bg-white px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-50"
+                >
+                  Retry
+                </button>
+              </div>
+            )}
+            {uploadError && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                {uploadError}
+              </div>
+            )}
+
+            {/* Upload: full block when no data or when toggled */}
+            {(!hasData || showUpload) && (
+              <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+                <UploadCSV
+                  onBankCSVUploaded={handleBankCSVUploaded}
+                  onTransactionsOnlyUploaded={handleFastCSVUploaded}
+                  uploadProgress={uploadProgress}
+                  isUploading={!!uploadProgress}
                 />
-                <path
-                  className="opacity-75"
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                />
-              </svg>
-              <span className="text-blue-700">Loading transactions from Supabase...</span>
-            </div>
-          )}
+              </section>
+            )}
 
-          {/* Error Messages */}
-          {error && (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-              <p className="text-red-700 font-medium">Database Error</p>
-              <p className="text-red-600 text-sm mt-1">{error}</p>
-              <p className="text-red-600 text-sm mt-2">
-                Make sure you've set up your Supabase project and added the environment variables.
-              </p>
-            </div>
-          )}
+            {categoriesLoading && (
+              <div className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                <Spinner />
+                Loading categories…
+              </div>
+            )}
 
-          {categoriesError && (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-              <p className="text-red-700 font-medium">Category Error</p>
-              <p className="text-red-600 text-sm mt-1">{categoriesError}</p>
-              <button
-                onClick={refreshCategories}
-                className="mt-3 inline-flex items-center gap-2 rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 transition-colors"
-              >
-                Retry loading categories
-              </button>
-            </div>
-          )}
+            {hasData && (
+              <>
+                <DashboardOverview transactions={transactions} />
 
-          {uploadError && (
-            <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
-              <p className="text-orange-700 font-medium">Upload Error</p>
-              <p className="text-orange-600 text-sm mt-1">{uploadError}</p>
-            </div>
-          )}
+                <AccountingSummary />
 
-          <UploadCSV onTransactionsLoaded={handleTransactionsLoaded} />
+                <ExportButtons transactions={transactions} />
 
-          {categoriesLoading && (
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-center gap-3">
-              <svg className="h-5 w-5 animate-spin text-blue-600" viewBox="0 0 24 24" fill="none">
-                <circle
-                  className="opacity-25"
-                  cx="12"
-                  cy="12"
-                  r="10"
-                  stroke="currentColor"
-                  strokeWidth="4"
-                />
-                <path
-                  className="opacity-75"
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                />
-              </svg>
-              <span className="text-sm text-blue-700">Refreshing categories…</span>
-            </div>
-          )}
+                <section>
+                  <div className="mb-3 flex items-center justify-between">
+                    <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+                      Transactions
+                    </h2>
+                    <button
+                      type="button"
+                      onClick={() => setTransactionsCollapsed((v) => !v)}
+                      className="text-xs font-medium text-slate-500 hover:text-slate-800"
+                    >
+                      {transactionsCollapsed ? 'Show list' : 'Hide list'}
+                    </button>
+                  </div>
+                  {!transactionsCollapsed && (
+                    <>
+                      <SearchAndFilter categoryOptions={categoryOptions} onFilterChange={setFilters} />
+                      <div className="mt-4 rounded-xl border border-slate-200 bg-white shadow-sm">
+                        <TransactionList
+                          transactions={filteredTransactions}
+                          categories={categoryOptions}
+                          onCategoryChange={handleCategoryChange}
+                          onDelete={handleDeleteTransaction}
+                          normalizedMap={normalizedMap}
+                      onDateChange={handleDateChange}
+                          onTxnTypeChange={handleTxnTypeChange}
+                        />
+                      </div>
+                    </>
+                  )}
+                </section>
 
-          <CategoryOverview categories={categoryTree} isLoading={categoriesLoading} />
-          
-          {transactions.length > 0 && (
-            <>
-              <Summary transactions={transactions} />
-              <ExportButtons transactions={transactions} />
-              <MonthlySummary transactions={transactions} />
+                <section>
+                  <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-slate-500">
+                    Insights
+                  </h2>
+                  <div className="space-y-6">
+                    <CategoryOverview categories={categoryTree} isLoading={categoriesLoading} />
+                    <MonthlySummary transactions={transactions} />
+                    <MultiMonthCharts transactions={filteredTransactions} />
+                    <RecurringTransactions
+                      transactions={transactions}
+                      categoryOptions={categoryOptions}
+                      onApplyToTransaction={handleCategoryChange}
+                    />
+                  </div>
+                </section>
+              </>
+            )}
 
-               {/* 👇 New multi-month charts – uses filteredTransactions so filters apply */}
-    <MultiMonthCharts transactions={filteredTransactions} />
-    
-              <RecurringTransactions
-                transactions={transactions}
-                categoryOptions={categoryOptions}
-                onApplyToTransaction={handleCategoryChange}
-              />
-              <SearchAndFilter categoryOptions={categoryOptions} onFilterChange={setFilters} />
-              <TransactionList
-                transactions={filteredTransactions}
-                categories={categoryOptions}
-                onCategoryChange={handleCategoryChange}
-                onDelete={handleDeleteTransaction}
-              />
-            </>
-          )}
-
-          {!loading && transactions.length === 0 && (
-            <div className="text-center py-12 bg-white rounded-lg shadow">
-              <svg
-                className="mx-auto h-12 w-12 text-gray-400"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                />
-              </svg>
-              <h3 className="mt-2 text-sm font-medium text-gray-900">No transactions</h3>
-              <p className="mt-1 text-sm text-gray-500">Upload a CSV file to get started</p>
-            </div>
-          )}
-        </div>
+            {!loading && !hasData && (
+              <div className="rounded-xl border border-slate-200 bg-white py-16 text-center shadow-sm">
+                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-400">
+                  <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                </div>
+                <h3 className="mt-4 text-sm font-medium text-slate-900">No transactions yet</h3>
+                <p className="mt-1 text-sm text-slate-500">Upload a bank statement CSV above to get started.</p>
+              </div>
+            )}
+          </div>
         </main>
       </div>
     </div>
+  );
+}
+
+function Spinner() {
+  return (
+    <svg className="h-5 w-5 animate-spin text-slate-500" viewBox="0 0 24 24" fill="none">
+      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+    </svg>
   );
 }

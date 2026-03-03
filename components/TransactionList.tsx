@@ -1,14 +1,18 @@
 'use client';
 
 import { useState } from 'react';
-import { Transaction, SYSTEM_CATEGORY_NAME } from '@/types';
+import { Transaction, SYSTEM_CATEGORY_NAME, type TxnType } from '@/types';
 import { CategoryOption } from '@/hooks/useCategories';
+import type { NormalizedInfo } from '@/hooks/useNormalizedTransactions';
 
 interface TransactionListProps {
   transactions: Transaction[];
   categories: CategoryOption[];
   onCategoryChange: (id: string, category: { id: string | null; label: string }) => void;
   onDelete: (id: string) => void;
+  normalizedMap?: Record<string, NormalizedInfo>;
+  onTxnTypeChange?: (id: string, txnType: TxnType) => void;
+  onDateChange?: (id: string, date: string) => void;
 }
 
 export function TransactionList({
@@ -16,6 +20,9 @@ export function TransactionList({
   categories,
   onCategoryChange,
   onDelete,
+  normalizedMap = {},
+  onDateChange,
+  onTxnTypeChange,
 }: TransactionListProps) {
   const [filter, setFilter] = useState<string>('all');
   const [sortBy, setSortBy] = useState<'date' | 'amount'>('date');
@@ -49,6 +56,16 @@ export function TransactionList({
     if (!a.isSystem && b.isSystem) return 1;
     return a.label.localeCompare(b.label);
   });
+
+  const formatDisplayDate = (raw: string) => {
+    const d = new Date(raw);
+    if (Number.isNaN(d.getTime())) return 'Invalid Date';
+    return d.toLocaleDateString();
+  };
+
+  const inputDateValue = (raw: string) => {
+    return /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : '';
+  };
 
   return (
     <div className="bg-white rounded-lg shadow">
@@ -92,6 +109,9 @@ export function TransactionList({
                   Description
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Type
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Category
                 </th>
                 <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -109,10 +129,54 @@ export function TransactionList({
               {filteredTransactions.map((transaction) => (
                 <tr key={transaction.id} className="hover:bg-gray-50">
                   <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
-                    {new Date(transaction.date).toLocaleDateString()}
+                    {onDateChange ? (
+                      <input
+                        type="date"
+                        value={inputDateValue(transaction.date)}
+                        onChange={(e) => onDateChange(transaction.id, e.target.value)}
+                        className="border border-gray-300 rounded px-2 py-1 text-xs"
+                      />
+                    ) : (
+                      formatDisplayDate(transaction.date)
+                    )}
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-900">
                     {transaction.description}
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">
+                    {onTxnTypeChange ? (
+                      <select
+                        value={normalizedMap[transaction.id]?.txn_type ?? 'unknown'}
+                        onChange={(e) => onTxnTypeChange(transaction.id, e.target.value as TxnType)}
+                        className="text-sm border border-gray-300 rounded px-2 py-1 bg-white"
+                      >
+                        <option value="rental_deposit">rental_deposit</option>
+                        <option value="commission_recognition">commission_recognition</option>
+                        <option value="owner_payout">owner_payout</option>
+                        <option value="cleaning_income">cleaning_income</option>
+                        <option value="laundry_income">laundry_income</option>
+                        <option value="pos_deposit">pos_deposit</option>
+                        <option value="direct_deposit">direct_deposit</option>
+                        <option value="op_expense">op_expense</option>
+                        <option value="rsl_loan">rsl_loan</option>
+                        <option value="rsl_repayment">rsl_repayment</option>
+                        <option value="internal_transfer">internal_transfer</option>
+                        <option value="unknown">unknown</option>
+                      </select>
+                    ) : normalizedMap[transaction.id] ? (
+                      <span
+                        title={`${normalizedMap[transaction.id].txn_type} (${normalizedMap[transaction.id].confidence})`}
+                      >
+                        {normalizedMap[transaction.id].txn_type}
+                        {normalizedMap[transaction.id].platform && (
+                          <span className="text-gray-400 ml-1">
+                            ({normalizedMap[transaction.id].platform})
+                          </span>
+                        )}
+                      </span>
+                    ) : (
+                      '-'
+                    )}
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap">
                     <select

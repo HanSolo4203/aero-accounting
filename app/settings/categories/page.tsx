@@ -2,6 +2,8 @@
 
 import Link from 'next/link';
 import { FormEvent, useMemo, useState } from 'react';
+import { AccountSidebar } from '@/components/AccountSidebar';
+import { DashboardNav } from '@/components/DashboardNav';
 import { useCategories } from '@/hooks/useCategories';
 import { SYSTEM_CATEGORY_NAME } from '@/types';
 
@@ -255,32 +257,26 @@ const ManageCategoriesPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-100">
-      <header className="border-b bg-white">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Category Settings</h1>
-            <p className="text-sm text-gray-600">
-              Organise your transaction categories, add subcategories, and curate the structure that works for you.
-            </p>
+    <div className="flex h-screen overflow-hidden bg-slate-50">
+      <AccountSidebar />
+      <div className="flex flex-1 flex-col overflow-hidden">
+        <header className="border-b border-slate-200 bg-white">
+          <div className="px-4 py-3 sm:px-6 lg:px-8">
+            <div className="flex items-center gap-6">
+              <Link href="/" className="text-lg font-semibold text-slate-900">
+                Right Stay Africa
+              </Link>
+              <DashboardNav />
+            </div>
           </div>
-          <Link
-            href="/"
-            className="inline-flex items-center gap-2 rounded-md border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
-          >
-            <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-              <path
-                fillRule="evenodd"
-                d="M9.707 3.293a1 1 0 010 1.414L6.414 8H17a1 1 0 110 2H6.414l3.293 3.293a1 1 0 01-1.414 1.414l-5-5a1 1 0 010-1.414l5-5a1 1 0 011.414 0z"
-                clipRule="evenodd"
-              />
-            </svg>
-            Back to dashboard
-          </Link>
-        </div>
-      </header>
+        </header>
 
-      <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
+        <main className="flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8">
+          <div className="mx-auto max-w-4xl">
+            <h1 className="text-xl font-semibold text-slate-900">Categories</h1>
+            <p className="mt-1 text-sm text-slate-500">
+              Organise transaction categories and subcategories
+            </p>
         <div className="space-y-6">
           {error && (
             <div className="rounded-lg border border-red-200 bg-red-50 p-4">
@@ -380,7 +376,9 @@ const ManageCategoriesPage = () => {
             </div>
           </section>
         </div>
-      </main>
+          </div>
+        </main>
+      </div>
     </div>
   );
 };

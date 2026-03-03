@@ -3,8 +3,8 @@ import "./globals.css";
 import { BankAccountsProvider } from "@/contexts/BankAccountsContext";
 
 export const metadata: Metadata = {
-  title: "Simple Accounting",
-  description: "Simple accounting app for managing bank statements",
+  title: "Right Stay Africa - Accounting Engine",
+  description: "Double-entry accounting for property management — CSV in, ledger out",
 };
 
 export default function RootLayout({
